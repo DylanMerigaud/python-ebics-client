@@ -15,7 +15,7 @@ An EBICS 3.0 user has three RSA keys, each with an X.509 certificate:
 | Key | Use |
 |---|---|
 | A006 | electronic signature of uploads (RSASSA-PSS, SHA-256) |
-| X002 | authentication of every request |
+| X002 | authentication of every `ebicsRequest` and of HPB (INI and HIA are unsecured, H3K is unsigned) |
 | E002 | encryption of the order data |
 
 ```python

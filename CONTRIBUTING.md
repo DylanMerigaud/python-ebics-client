@@ -26,8 +26,10 @@ New behaviour comes with a test. Keep public functions and methods fully annotat
 ## XSD validation
 
 The official EBICS H005 schemas are vendored in `tests/xsd/H005/`. The tests validate every
-request the library builds and every response `FakeBank` builds against `ebics_H005.xsd`
-(helper `assert_valid` in `tests/conftest.py`). A change to a request builder must keep that
+H005 request the library builds and every H005 response `FakeBank` builds against
+`ebics_H005.xsd` (helper `assert_valid` in `tests/conftest.py`). HEV uses the separate H000
+namespace; no H000 schema is vendored, so the HEV request and answer are tested but not
+schema-validated. A change to a request builder must keep that
 validation green; do not loosen the schemas.
 
 ## Bank interop results

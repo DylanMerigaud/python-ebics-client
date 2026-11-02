@@ -15,7 +15,9 @@ bank, not yet against a production bank.
   uploads.
 - Key generation: A006 (signature), X002 (authentication) and E002 (encryption) RSA keys with
   self-signed X.509 certificates; loading of CA-issued certificates for H3K.
-- X002 authentication signature on every request, verified on every bank response.
+- X002 authentication signature on every `ebicsRequest` and on HPB, verified on every
+  `ebicsResponse`. INI and HIA are unsecured, H3K is unsigned (A006 signed) and key management
+  responses carry no signature, per the specification.
 - Order data encryption and decryption (E002, AES-128-CBC with the EBICS padding), zlib
   compression, A006 signature (RSASSA-PSS, SHA-256) on uploads.
 - BTD downloads with several segments, receipts, and unpacking of ZIP containers. Truncated
@@ -44,6 +46,8 @@ bank, not yet against a production bank.
 - `ebics_client.testing.FakeBank`, an in-process H005 bank for tests and offline examples.
 - Typed package (`py.typed`), Python 3.9 to 3.13, runtime dependencies `cryptography` and
   `lxml`.
-- Every request and every FakeBank response is validated against the H005 XSDs in the tests.
+- Every H005 request and every H005 FakeBank response is validated against the H005 XSDs in
+  the tests. HEV (H000 namespace) is tested but not schema-validated: no H000 schema is
+  vendored.
 
 [0.1.0]: https://github.com/DylanMerigaud/python-ebics-client/releases/tag/v0.1.0

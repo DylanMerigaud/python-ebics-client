@@ -17,8 +17,11 @@ not yet against a production bank. Read this page before pointing it at real acc
 - **Download acknowledgement.** The bank gets a positive receipt only after the data was
   decrypted and unpacked.
 - **Transport.** The default `HttpTransport` refuses non-HTTPS URLs (unless
-  `allow_insecure_http=True`) and uses the certificate validation of the Python `ssl` module.
-- **ZIP containers.** An archive that unpacks to more than 1 GiB is refused. XML is parsed
+  `allow_insecure_http=True`), uses the certificate validation of the Python `ssl` module and
+  refuses answers larger than `max_response_bytes` (default 64 MiB).
+- **Compressed data.** Truncated zlib data and bytes after the zlib stream are refused.
+- **ZIP containers.** An archive that unpacks to more than 1 GiB, or that cannot be unpacked
+  (bad CRC, unsupported compression, encrypted entry), is refused with a negative receipt. XML is parsed
   without entity resolution or network access.
 - **Defaults that protect you.** Uploads raise `UploadsDisabled` unless `allow_uploads=True`.
   Downloads and uploads raise `BankKeysNotVerified` until you set

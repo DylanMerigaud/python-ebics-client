@@ -8,14 +8,18 @@ A pure-Python EBICS 3.0 (H005) client for Python developers and ERP integrators 
 download bank statements (camt.052, camt.053, camt.054) and upload payment files (pain.001,
 pain.008) over EBICS with Swiss, German or French banks, without a paid licence and without a
 Node.js sidecar. EBICS 2.5 is being switched off in Switzerland (Raiffeisen Switzerland ends
-it on 2026-11-13), so a client that speaks H005 is no longer optional there.
+it on 2026-11-13, as of October 2026, per its
+[EBICS page](https://www.raiffeisen.ch/rch/de/unternehmen/zahlungsverkehr/harmonisierung-im-zahlungsverkehr/ebics.html), read 2026-10-14), so a
+client that speaks H005 is no longer optional there.
 
 It implements EBICS 3.0 (protocol version H005) as specified by EBICS SCRL,
 <https://www.ebics.org>.
 
-**Status: version 0.1.0, alpha.** Every request and every response is validated against the
-official EBICS H005 XML schemas and exercised end to end against an in-process test bank
-(`FakeBank`). It has **not yet been confirmed against a production bank**. Bank interop reports
+**Status: version 0.1.0, alpha.** In the tests, every H005 request the library builds and every
+H005 response of the test bank are validated against the official EBICS H005 XML schemas, and
+exercised end to end against an in-process test bank (`FakeBank`). The HEV version check uses
+the separate H000 namespace; it is tested but not schema-validated (no H000 schema is
+vendored). It has **not yet been confirmed against a production bank**. Bank interop reports
 are welcome: use the
 [bank report issue template](https://github.com/DylanMerigaud/python-ebics-client/issues/new?template=bank_report.md).
 Uploads are off by default.
@@ -27,7 +31,9 @@ Uploads are off by default.
 - Key management orders: HEV, INI, HIA, H3K (for CA-issued certificates) and HPB.
 - BTD downloads with a date range, several segments, receipts, and ZIP containers unpacked.
 - BTU uploads with the A006 electronic signature, segmentation, behind `allow_uploads=True`.
-- X002 authentication signature on every request, verified on every bank response.
+- X002 authentication signature on every `ebicsRequest` (and on HPB), verified on every
+  `ebicsResponse`. Per the specification, INI and HIA are unsecured requests, H3K is unsigned
+  (it carries an A006 signature instead), and key management responses carry no signature.
 - Service presets for Switzerland and Germany: camt.052/053/054, pain.001, pain.008.
 - INI and HIA letter with the SHA-256 certificate hashes; bank key hashes to compare after HPB.
 - Encrypted keyring file (passphrase, PKCS#8, mode 600), or a dict for a database.
@@ -219,12 +225,12 @@ except SignatureInvalid:
 
 ## Why this library
 
-Facts as of 2026-10.
+Facts as of October 2026.
 
 | Library | Language | License | Notes |
 |---|---|---|---|
 | python-ebics-client (this) | Python | MIT | H005, two runtime dependencies, alpha |
-| `fintech` (joonis) | Python | proprietary | the EBICS client needs a paid licence: 100 EUR setup plus 25 EUR a month for the first user; the free mode is limited to 5 transactions per upload and 3 days of statements |
+| `fintech` (joonis) | Python | proprietary | the EBICS client needs a paid licence: 100 EUR setup plus 25 EUR a month for the first user; the free mode is limited to 5 transactions per upload and 3 days of statements (as of October 2026, per the [price page](https://www.joonis.de/en/fintech/prices/) and the [licence page](https://www.joonis.de/fintech/license), read 2026-10-14) |
 | `ebicsclient` (schulluk) | Python | source-available | paid commercial licence |
 | `ebicsPy` 0.1 | Python | AGPL | published 2015, unmaintained |
 | node-ebics-client | Node.js | MIT | last push 2025-04 |
@@ -237,7 +243,7 @@ banks (this is 0.1.0 and has only met a test bank), the older H004 and H003 prot
 a broader set of order types (HAA, HTD, FDL/FUL and bank specific ones), parsing of camt files
 into Python objects, PDF letters, dual-signature (VEU) workflows, and years of use by other
 people. What it has: an MIT licence, no payment gate, H005 only and small, typed, two
-dependencies, schema-validated messages, and an in-process bank for your own tests.
+dependencies, schema-validated H005 messages, and an in-process bank for your own tests.
 
 ## Using it in an existing project
 
@@ -387,7 +393,7 @@ from ebics_client import EbicsClient, Keyring, Service, User
 from ebics_client.testing import FakeBank, sample_camt053
 
 user = User(partner_id="PARTNER1", user_id="USER1")
-blob = json.dumps(Keyring.generate(user).to_dict("passphrase"))  # store this string on the model
+blob = json.dumps(Keyring.generate(user).to_dict("passphrase"))  # store this string on the database record
 
 # fintech: keyring = EbicsKeyRing(keys=tempfile_path, passphrase=conn.passphrase); ...; keyring.save()
 keyring = Keyring.from_dict(json.loads(blob), "passphrase")
@@ -406,6 +412,60 @@ print(len(documents), "camt.053 file(s); parse them with your CAMT parser")
 The camt.053 parsing that the project does with `fintech.sepa.CAMTDocument` has no equivalent
 here: you receive the XML bytes.
 
+### Odoo modules
+
+Noviat/account_ebics (above) is an Odoo module built on `fintech`. On the Odoo Community
+Association contributors list, the thread
+[Status of the EBICS integration](https://test.odoo-community.org/groups/contributors-69/26132-status-of-the-ebics-integration-9006)
+asks for an open-source Python EBICS client. An Odoo module would keep the keyring string from
+`to_dict` in a field of its EBICS configuration record, take the passphrase from the server
+configuration, and build the client in a model method. The class below stands in for the model
+so the example runs without Odoo; the comments give the Odoo side.
+
+```python
+import json
+from dataclasses import dataclass
+from datetime import date
+
+from ebics_client import Bank, EbicsClient, Keyring, Service, User
+from ebics_client.testing import FakeBank, sample_camt053
+
+
+@dataclass
+class EbicsConfig:  # Odoo: class EbicsConfig(models.Model): _name = "ebics.config"
+    host_id: str  # fields.Char(required=True)
+    url: str  # fields.Char(required=True)
+    partner_id: str  # fields.Char(required=True)
+    user_id: str  # fields.Char(required=True)
+    keyring_json: str = ""  # fields.Text(groups="base.group_system")
+    passphrase: str = "secret"  # Odoo: odoo.tools.config.get("ebics_passphrase")
+
+    def ebics_client(self, transport=None) -> EbicsClient:  # Odoo: no transport, HTTPS
+        keyring = Keyring.from_dict(json.loads(self.keyring_json), self.passphrase)
+        user = User(self.partner_id, self.user_id)
+        return EbicsClient(Bank(self.host_id, self.url), user, keyring, transport=transport)
+
+    def save_keyring(self, client: EbicsClient) -> None:  # Odoo: self.write({...})
+        self.keyring_json = json.dumps(client.keyring.to_dict(self.passphrase))
+
+    def fetch_statements(self, start: date, end: date, transport=None) -> list[bytes]:
+        # Odoo: called by a button or a cron; hand the files to a camt.053 import
+        return self.ebics_client(transport).download(Service.CAMT_053_CH, start=start, end=end)
+
+
+fake = FakeBank()
+fake.register_download(Service.CAMT_053_CH, sample_camt053())
+config = EbicsConfig(fake.host_id, fake.url, "PARTNER1", "USER1")
+user = User(config.partner_id, config.user_id)
+config.keyring_json = json.dumps(Keyring.generate(user).to_dict(config.passphrase))
+
+client = config.ebics_client(transport=fake)
+fake.onboard(client)  # Odoo: INI, HIA, letter and HPB buttons on the record
+config.save_keyring(client)
+files = config.fetch_statements(date(2026, 10, 1), date(2026, 10, 31), transport=fake)
+print(len(files), "camt.053 file(s) for the bank statement import")
+```
+
 ## Documentation
 
 - [Onboarding guide](docs/guide.md): keys, INI/HIA, letter, HPB, hashes, downloads, uploads,
@@ -417,7 +477,8 @@ here: you receive the XML bytes.
 
 ## Security notes
 
-The client verifies the X002 signature of every bank response and refuses downloads and uploads
+The client verifies the X002 signature of every `ebicsResponse` (key management responses carry
+none, per the specification) and refuses downloads and uploads
 until you have compared the bank key hashes with the bank's letter and set
 `keyring.bank_keys_verified = True`. Uploads need `allow_uploads=True`. The keyring file is
 encrypted with a passphrase, mode 600. It does not validate payment file content, bank

@@ -17,8 +17,9 @@ ruff, mypy, build, lxml-stubs). Run tests: `.venv/bin/python -m pytest -q`.
 - EBICS 3.0.2 specification and the H005 XML schemas (ebics.org, "Specification", EBICS 3.0).
   The official H005 XSDs are vendored under `tests/xsd/H005/` (copied from
   `/home/dylanmerigaud/.cache/ebics-ref/epics/spec/xsd/H005/`, which railslove/epics ships under
-  MIT; their origin is ebics.org). Every request the library builds and every response the test
-  bank builds is validated against them in the tests.
+  MIT; their origin is ebics.org). Every H005 request the library builds and every H005 response the
+  test bank builds is validated against them in the tests; HEV (H000) is tested but not
+  schema-validated, no H000 schema is vendored.
 - Reference implementations, read for behaviour only (no code copied):
   railslove/epics (Ruby, MIT), local copy at `/home/dylanmerigaud/.cache/ebics-ref/epics/lib/`
   (its v3 builders, `crypt/aes.rb`, `crypt/x_509.rb`, `signature_algorithm/*.rb`,
@@ -32,8 +33,10 @@ ruff, mypy, build, lxml-stubs). Run tests: `.venv/bin/python -m pytest -q`.
   `http://www.w3.org/2000/09/xmldsig#`, HEV `http://www.ebics.org/H000`. Root attributes
   `Version="H005" Revision="1"`.
 - Keys: RSA 2048 bit minimum (we generate 2048 by default, accept 2048 to 4096).
-  A006 = electronic signature, RSASSA-PSS, SHA-256, MGF1 SHA-256, salt length 32, over the order
-  data (the library signs the raw document bytes; PSS hashes them with SHA-256).
+  A006 = electronic signature, RSASSA-PSS, SHA-256, MGF1 SHA-256, salt length 32, applied to
+  the SHA-256 hash of the normalized order data (CR, LF and Ctrl-Z removed), so the data is
+  hashed twice: once for the EBICS hash value, once inside PSS. railslove/epics and
+  node-ebics-client sign the same way. The normalized document is also what is sent.
   X002 = authentication, RSASSA-PKCS1-v1_5 SHA-256 over the canonical SignedInfo.
   E002 = encryption: a random 16 byte AES-128 transaction key, AES-128-CBC with a zero IV and the
   EBICS padding (pad to the next full block, ALWAYS at least one byte, zero bytes, last byte =
