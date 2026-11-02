@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from . import crypto, letter, requests, responses, xmlsig
+from .client import EbicsClient, HttpTransport
 from .errors import (
     BankKeysNotVerified,
     EbicsBusinessError,
@@ -14,6 +15,7 @@ from .errors import (
     UploadsDisabled,
 )
 from .keyring import Bank, Keyring, User
+from .responses import ProtocolVersion
 from .service import Service
 
 __version__ = "0.1.0"
@@ -22,11 +24,14 @@ __all__ = [
     "Bank",
     "BankKeysNotVerified",
     "EbicsBusinessError",
+    "EbicsClient",
     "EbicsError",
     "EbicsTechnicalError",
+    "HttpTransport",
     "Keyring",
     "KeyringError",
     "NoDownloadData",
+    "ProtocolVersion",
     "Service",
     "SignatureInvalid",
     "UploadsDisabled",
