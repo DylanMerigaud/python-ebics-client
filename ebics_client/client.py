@@ -121,7 +121,16 @@ class EbicsClient:
         answer = responses.parse_response(self._post(body))
         if answer.kind != "ebicsResponse":
             raise EbicsError(text=f"expected ebicsResponse, got {answer.kind}")
-        xmlsig.verify(answer.root, self.keyring.bank_authentication_key())
+        try:
+            xmlsig.verify(answer.root, self.keyring.bank_authentication_key())
+        except SignatureInvalid as exc:
+            # The codes cannot be trusted without the signature, but they often
+            # explain the failure (e.g. a key update), so report them, marked as such.
+            raise SignatureInvalid(
+                text=f"{exc.text} (unverified bank answer: technical "
+                f"{answer.technical_code or '-'}, business {answer.business_code or '-'}, "
+                f"report text {answer.report_text!r})"
+            ) from exc
         answer.raise_for_codes()
         return answer
 

@@ -246,6 +246,22 @@ def test_response_signed_with_unknown_key_refused() -> None:
         client.download(Service.CAMT_053_CH)
 
 
+def test_signature_failure_reports_the_unverified_codes() -> None:
+    bank = new_bank()
+    client, _ = onboarded(bank)
+    # The bank changed keys: it refuses with 091008, signed with a key we do not know.
+    bank.rotate_keys(authentication_key=pooled_key(5))
+    with pytest.raises(SignatureInvalid) as info:
+        client.download(Service.CAMT_053_CH)
+    message = str(info.value)
+    assert "X002 authentication signature does not verify" in message
+    assert "unverified bank answer" in message
+    assert "technical 091008" in message
+    assert "business 000000" in message
+    assert "bank key digests outdated" in message
+    assert info.value.code == ""  # the codes are not trusted, only reported
+
+
 def test_tampered_authenticated_content_refused() -> None:
     bank = new_bank()
     client, _ = onboarded(bank)

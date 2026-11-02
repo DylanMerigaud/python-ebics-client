@@ -33,6 +33,8 @@ bank, not yet against a production bank.
 - `Keyring` with `save` and `load` (private keys encrypted with a passphrase, file mode 600).
 - Safety defaults: uploads off, downloads and uploads refused until the bank keys are marked
   verified, HTTPS only for the default transport.
+- `SignatureInvalid` raised for a bank answer whose X002 signature does not verify names the
+  answer's technical and business return codes and report text, marked as unverified.
 - `ebics_client.testing.FakeBank`, an in-process H005 bank for tests and offline examples.
 - Typed package (`py.typed`), Python 3.9 to 3.13, runtime dependencies `cryptography` and
   `lxml`.
