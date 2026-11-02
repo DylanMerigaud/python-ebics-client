@@ -89,7 +89,9 @@ def _e(name: str) -> str:
     return f"{{{H005_NS}}}{name}"
 
 
-def _sub(parent: etree._Element, name: str, text: str | None = None, **attrib: str) -> etree._Element:
+def _sub(
+    parent: etree._Element, name: str, text: str | None = None, **attrib: str
+) -> etree._Element:
     element = etree.SubElement(parent, name, attrib)
     if text is not None:
         element.text = text
@@ -260,14 +262,24 @@ def h3k_order_data(ctx: RequestContext, keyring: Keyring) -> bytes:
     """H3KRequestOrderData carrying the three (usually CA-issued) certificates."""
     root = _new(_e("H3KRequestOrderData"), H005_NS, ds=DS_NS)
     for name, version_name, version, certificate in (
-        ("SignatureCertificateInfo", "SignatureVersion", crypto.SIGNATURE, keyring.signature_certificate),
+        (
+            "SignatureCertificateInfo",
+            "SignatureVersion",
+            crypto.SIGNATURE,
+            keyring.signature_certificate,
+        ),
         (
             "AuthenticationCertificateInfo",
             "AuthenticationVersion",
             crypto.AUTHENTICATION,
             keyring.authentication_certificate,
         ),
-        ("EncryptionCertificateInfo", "EncryptionVersion", crypto.ENCRYPTION, keyring.encryption_certificate),
+        (
+            "EncryptionCertificateInfo",
+            "EncryptionVersion",
+            crypto.ENCRYPTION,
+            keyring.encryption_certificate,
+        ),
     ):
         info = _sub(root, _e(name))
         _x509_data(info, certificate)
@@ -337,7 +349,10 @@ def _secured_init(
 
 
 def _finish_init(
-    root: etree._Element, header: etree._Element, static: etree._Element, keyring: Keyring,
+    root: etree._Element,
+    header: etree._Element,
+    static: etree._Element,
+    keyring: Keyring,
     num_segments: int | None = None,
 ) -> etree._Element:
     _bank_digests(static, keyring)
@@ -481,4 +496,3 @@ def build_upload_transfer(
     _sub(transfer, _e("OrderData"), order_data_segment)
     xmlsig.sign(root, keyring.authentication_key)
     return _serialize(root)
-

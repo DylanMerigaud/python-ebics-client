@@ -333,7 +333,9 @@ class FakeBank:
     # HEV and key management ---------------------------------------------------
 
     def _hev(self) -> bytes:
-        root = etree.Element(_q("ebicsHEVResponse", H000), nsmap=cast("dict[str, str]", {None: H000}))
+        root = etree.Element(
+            _q("ebicsHEVResponse", H000), nsmap=cast("dict[str, str]", {None: H000})
+        )
         code = etree.SubElement(root, _q("SystemReturnCode", H000))
         etree.SubElement(code, _q("ReturnCode", H000)).text = "000000"
         etree.SubElement(code, _q("ReportText", H000)).text = "[EBICS_OK] OK"
@@ -358,7 +360,9 @@ class FakeBank:
     def _unsecured(self, root: etree._Element) -> bytes:
         try:
             subscriber = self._static_subscriber(root)
-            order_type = root.findtext("e:header/e:static/e:OrderDetails/e:AdminOrderType", namespaces=_NS)
+            order_type = root.findtext(
+                "e:header/e:static/e:OrderDetails/e:AdminOrderType", namespaces=_NS
+            )
             data = self._order_data(root)
             if order_type == "INI":
                 info = data.find("s:SignaturePubKeyInfo", _NS)
@@ -377,24 +381,35 @@ class FakeBank:
     def _unsigned(self, root: etree._Element) -> bytes:
         try:
             subscriber = self._static_subscriber(root)
-            order_type = root.findtext("e:header/e:static/e:OrderDetails/e:AdminOrderType", namespaces=_NS)
+            order_type = root.findtext(
+                "e:header/e:static/e:OrderDetails/e:AdminOrderType", namespaces=_NS
+            )
             if order_type != "H3K":
                 raise _Refusal("091005", text="unsupported order type")
             transfer = _need(root.find("e:body/e:DataTransfer", _NS))
-            order_bytes = zlib.decompress(base64.b64decode(transfer.findtext("e:OrderData", namespaces=_NS) or ""))
+            order_bytes = zlib.decompress(
+                base64.b64decode(transfer.findtext("e:OrderData", namespaces=_NS) or "")
+            )
             data = _parse(order_bytes)
             signature_xml = _parse(
-                zlib.decompress(base64.b64decode(transfer.findtext("e:SignatureData", namespaces=_NS) or ""))
+                zlib.decompress(
+                    base64.b64decode(transfer.findtext("e:SignatureData", namespaces=_NS) or "")
+                )
             )
             signature_certificate = _certificate_in(data.find("e:SignatureCertificateInfo", _NS))
-            value = signature_xml.findtext("s:OrderSignatureData/s:SignatureValue", namespaces=_NS) or ""
+            value = (
+                signature_xml.findtext("s:OrderSignatureData/s:SignatureValue", namespaces=_NS)
+                or ""
+            )
             if not _a006_ok(signature_certificate, base64.b64decode(value), order_bytes):
                 raise _Refusal(business="091301", text="H3K signature does not verify")
             subscriber.signature_certificate = signature_certificate
             subscriber.authentication_certificate = _certificate_in(
                 data.find("e:AuthenticationCertificateInfo", _NS)
             )
-            subscriber.encryption_certificate = _certificate_in(data.find("e:EncryptionCertificateInfo", _NS))
+            subscriber.encryption_certificate = _certificate_in(
+                data.find("e:EncryptionCertificateInfo", _NS)
+            )
         except _Refusal as refusal:
             return self._key_response(refusal.technical, refusal.business, refusal.text)
         return self._key_response(order_id=self._next_order_id())
@@ -409,9 +424,16 @@ class FakeBank:
         except _Refusal as refusal:
             return self._key_response(refusal.technical, refusal.business, refusal.text)
 
-        order = etree.Element(_q("HPBResponseOrderData"), nsmap=cast("dict[str, str]", {None: H005, "ds": DS}))
+        order = etree.Element(
+            _q("HPBResponseOrderData"), nsmap=cast("dict[str, str]", {None: H005, "ds": DS})
+        )
         for name, version_tag, version, certificate in (
-            ("AuthenticationPubKeyInfo", "AuthenticationVersion", "X002", self.authentication_certificate),
+            (
+                "AuthenticationPubKeyInfo",
+                "AuthenticationVersion",
+                "X002",
+                self.authentication_certificate,
+            ),
             ("EncryptionPubKeyInfo", "EncryptionVersion", "E002", self.encryption_certificate),
         ):
             info = etree.SubElement(order, _q(name))
@@ -483,8 +505,12 @@ class FakeBank:
         info = root.find("e:AuthSignature/ds:SignedInfo", _NS)
         if info is None:
             raise _Refusal("061001", text="no AuthSignature")
-        claimed = base64.b64decode(info.findtext("ds:Reference/ds:DigestValue", namespaces=_NS) or "")
-        value = base64.b64decode(root.findtext("e:AuthSignature/ds:SignatureValue", namespaces=_NS) or "")
+        claimed = base64.b64decode(
+            info.findtext("ds:Reference/ds:DigestValue", namespaces=_NS) or ""
+        )
+        value = base64.b64decode(
+            root.findtext("e:AuthSignature/ds:SignatureValue", namespaces=_NS) or ""
+        )
         if claimed != _auth_digest(root):
             raise _Refusal("061001", text="digest mismatch")
         key = cast(rsa.RSAPublicKey, certificate.public_key())
@@ -593,7 +619,12 @@ class FakeBank:
         segments = [_b64(encrypted[i : i + size]) for i in range(0, len(encrypted), size)]
         transaction_id = secrets.token_hex(16).upper()
         self._transactions[transaction_id] = _Transaction(
-            "BTD", subscriber, self._next_order_id(), segments=segments, service=service, files=chosen
+            "BTD",
+            subscriber,
+            self._next_order_id(),
+            segments=segments,
+            service=service,
+            files=chosen,
         )
         return self._response(
             "Initialisation",
@@ -603,7 +634,9 @@ class FakeBank:
             data=(subscriber.encryption_certificate, key, segments[0]),
         )
 
-    def _download_segment(self, root: etree._Element, transaction_id: str, transaction: _Transaction) -> bytes:
+    def _download_segment(
+        self, root: etree._Element, transaction_id: str, transaction: _Transaction
+    ) -> bytes:
         number = int(root.findtext("e:header/e:mutable/e:SegmentNumber", namespaces=_NS) or "0")
         if not 1 <= number <= len(transaction.segments):
             raise _Refusal("091104", text="segment number exceeded")
@@ -614,7 +647,9 @@ class FakeBank:
             data=(None, None, transaction.segments[number - 1]),
         )
 
-    def _receipt(self, root: etree._Element, transaction_id: str, transaction: _Transaction) -> bytes:
+    def _receipt(
+        self, root: etree._Element, transaction_id: str, transaction: _Transaction
+    ) -> bytes:
         code = root.findtext("e:body/e:TransferReceipt/e:ReceiptCode", namespaces=_NS)
         del self._transactions[transaction_id]
         if code == "0" and transaction.service is not None:
@@ -622,11 +657,15 @@ class FakeBank:
             for item in transaction.files:
                 remaining.remove(item)
             return self._response(
-                "Receipt", technical="011000", transaction_id=transaction_id,
+                "Receipt",
+                technical="011000",
+                transaction_id=transaction_id,
                 text="[EBICS_DOWNLOAD_POSTPROCESS_DONE] Positive acknowledgement received",
             )
         return self._response(
-            "Receipt", technical="011001", transaction_id=transaction_id,
+            "Receipt",
+            technical="011001",
+            transaction_id=transaction_id,
             text="[EBICS_DOWNLOAD_POSTPROCESS_SKIPPED] Negative acknowledgement received",
         )
 
@@ -651,22 +690,30 @@ class FakeBank:
             self._next_order_id(),
             service=service,
             transaction_key=key,
-            signature_data=base64.b64decode(transfer.findtext("e:SignatureData", namespaces=_NS) or ""),
+            signature_data=base64.b64decode(
+                transfer.findtext("e:SignatureData", namespaces=_NS) or ""
+            ),
             data_digest=base64.b64decode(transfer.findtext("e:DataDigest", namespaces=_NS) or ""),
             file_name=params.get("fileName"),
-            expected_segments=int(root.findtext("e:header/e:static/e:NumSegments", namespaces=_NS) or "0"),
+            expected_segments=int(
+                root.findtext("e:header/e:static/e:NumSegments", namespaces=_NS) or "0"
+            ),
         )
         self._transactions[transaction_id] = transaction
         return self._response(
             "Initialisation", transaction_id=transaction_id, order_id=transaction.order_id
         )
 
-    def _upload_segment(self, root: etree._Element, transaction_id: str, transaction: _Transaction) -> bytes:
+    def _upload_segment(
+        self, root: etree._Element, transaction_id: str, transaction: _Transaction
+    ) -> bytes:
         segment = _need(root.find("e:header/e:mutable/e:SegmentNumber", _NS))
         number = int(segment.text or "0")
         if number != len(transaction.segments) + 1 or number > transaction.expected_segments:
             raise _Refusal("091104", text="unexpected segment number")
-        transaction.segments.append(root.findtext("e:body/e:DataTransfer/e:OrderData", namespaces=_NS) or "")
+        transaction.segments.append(
+            root.findtext("e:body/e:DataTransfer/e:OrderData", namespaces=_NS) or ""
+        )
         last = segment.get("lastSegment") == "true"
         if last:
             del self._transactions[transaction_id]
@@ -684,9 +731,13 @@ class FakeBank:
         if hashlib.sha256(_hash_input(data)).digest() != transaction.data_digest:
             raise _Refusal(business="091301", text="DataDigest does not match the order data")
         signature_xml = _parse(
-            zlib.decompress(_aes(transaction.transaction_key, transaction.signature_data, encrypt=False))
+            zlib.decompress(
+                _aes(transaction.transaction_key, transaction.signature_data, encrypt=False)
+            )
         )
-        value = signature_xml.findtext("s:OrderSignatureData/s:SignatureValue", namespaces=_NS) or ""
+        value = (
+            signature_xml.findtext("s:OrderSignatureData/s:SignatureValue", namespaces=_NS) or ""
+        )
         certificate = transaction.subscriber.signature_certificate
         if certificate is None or not _a006_ok(certificate, base64.b64decode(value), data):
             raise _Refusal(business="091301", text="electronic signature does not verify")
@@ -760,7 +811,9 @@ class FakeBank:
         info = etree.SubElement(signature, _q("SignedInfo", DS))
         etree.SubElement(info, _q("CanonicalizationMethod", DS), Algorithm=_C14N)
         etree.SubElement(info, _q("SignatureMethod", DS), Algorithm=_RSA_SHA256)
-        reference = etree.SubElement(info, _q("Reference", DS), URI="#xpointer(//*[@authenticate='true'])")
+        reference = etree.SubElement(
+            info, _q("Reference", DS), URI="#xpointer(//*[@authenticate='true'])"
+        )
         transforms = etree.SubElement(reference, _q("Transforms", DS))
         etree.SubElement(transforms, _q("Transform", DS), Algorithm=_C14N)
         etree.SubElement(reference, _q("DigestMethod", DS), Algorithm=_SHA256)

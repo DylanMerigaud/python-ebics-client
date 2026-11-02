@@ -70,15 +70,9 @@ class Service:
 # Swiss presets: Swiss Payment Standards, "Swiss Implementation Guidelines for EBICS"
 # (SIX), BTF mapping for the Swiss order types Z52, Z53, Z54, XE2 and XE3, with the
 # message versions of SPS 2022+ (camt.05x.001.08, pain.001.001.09, pain.008.001.08).
-Service.CAMT_052_CH = Service(
-    "STM", "camt.052", scope="CH", container="ZIP", msg_version="08"
-)
-Service.CAMT_053_CH = Service(
-    "EOP", "camt.053", scope="CH", container="ZIP", msg_version="08"
-)
-Service.CAMT_054_CH = Service(
-    "REP", "camt.054", scope="CH", container="ZIP", msg_version="08"
-)
+Service.CAMT_052_CH = Service("STM", "camt.052", scope="CH", container="ZIP", msg_version="08")
+Service.CAMT_053_CH = Service("EOP", "camt.053", scope="CH", container="ZIP", msg_version="08")
+Service.CAMT_054_CH = Service("REP", "camt.054", scope="CH", container="ZIP", msg_version="08")
 Service.PAIN_001_CH = Service("MCT", "pain.001", scope="CH", msg_version="09")
 Service.PAIN_008_CH = Service("SDD", "pain.008", scope="CH", msg_version="08")
 

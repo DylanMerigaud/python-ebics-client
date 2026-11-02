@@ -60,7 +60,9 @@ def _signature_lines() -> list[str]:
 
 def _ini_section(bank: Bank, user: User, keyring: Keyring, today: date) -> list[str]:
     lines = _header("EBICS initialisation letter INI (electronic signature)", bank, user, today)
-    lines += _certificate_block("Signature certificate", crypto.SIGNATURE, keyring.signature_certificate)
+    lines += _certificate_block(
+        "Signature certificate", crypto.SIGNATURE, keyring.signature_certificate
+    )
     return lines + _signature_lines()
 
 
@@ -84,7 +86,9 @@ def ini_letter(bank: Bank, user: User, keyring: Keyring, today: date | None = No
     received before activating the user.
     """
     day = today or date.today()
-    lines = _ini_section(bank, user, keyring, day) + ["", ""] + _hia_section(bank, user, keyring, day)
+    lines = (
+        _ini_section(bank, user, keyring, day) + ["", ""] + _hia_section(bank, user, keyring, day)
+    )
     return "\n".join(lines)
 
 
@@ -95,11 +99,16 @@ def hia_letter(bank: Bank, user: User, keyring: Keyring, today: date | None = No
 
 def bank_key_hashes(keyring: Keyring) -> dict[str, str]:
     """Hashes of the bank's X002 and E002 certificates, to compare with the bank's letter."""
-    if keyring.bank_authentication_certificate is None or keyring.bank_encryption_certificate is None:
+    if (
+        keyring.bank_authentication_certificate is None
+        or keyring.bank_encryption_certificate is None
+    ):
         raise KeyringError(text="the bank keys are unknown, run hpb() first")
     return {
         crypto.AUTHENTICATION: format_hash(
             crypto.certificate_digest(keyring.bank_authentication_certificate)
         ),
-        crypto.ENCRYPTION: format_hash(crypto.certificate_digest(keyring.bank_encryption_certificate)),
+        crypto.ENCRYPTION: format_hash(
+            crypto.certificate_digest(keyring.bank_encryption_certificate)
+        ),
     }

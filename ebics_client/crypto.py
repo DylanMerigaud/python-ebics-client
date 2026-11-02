@@ -61,7 +61,9 @@ _PSS = padding.PSS(mgf=padding.MGF1(hashes.SHA256()), salt_length=32)
 def generate_private_key(key_size: int = MIN_KEY_SIZE) -> rsa.RSAPrivateKey:
     """Generate an RSA key of key_size bits (2048 to 4096) with exponent 65537."""
     if not MIN_KEY_SIZE <= key_size <= MAX_KEY_SIZE:
-        raise ValueError(f"EBICS keys must be {MIN_KEY_SIZE} to {MAX_KEY_SIZE} bits, got {key_size}")
+        raise ValueError(
+            f"EBICS keys must be {MIN_KEY_SIZE} to {MAX_KEY_SIZE} bits, got {key_size}"
+        )
     return rsa.generate_private_key(public_exponent=65537, key_size=key_size)
 
 

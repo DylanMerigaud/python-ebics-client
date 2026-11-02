@@ -85,7 +85,9 @@ def _text(root: etree._Element, path: str) -> str | None:
 
 
 def _e(path: str) -> str:
-    return "/".join(f"{{{H005_NS}}}{part}" if part not in (".", "..") else part for part in path.split("/"))
+    return "/".join(
+        f"{{{H005_NS}}}{part}" if part not in (".", "..") else part for part in path.split("/")
+    )
 
 
 @dataclass
@@ -201,13 +203,17 @@ def decrypt_order_data(
         raise EbicsError(text=f"order data could not be decrypted: {exc}") from exc
 
 
-def _certificate(root: etree._Element, info: str, version_tag: str, version: str) -> x509.Certificate:
+def _certificate(
+    root: etree._Element, info: str, version_tag: str, version: str
+) -> x509.Certificate:
     element = root.find(f"{{{H005_NS}}}{info}")
     if element is None:
         raise EbicsError(text=f"HPB answer has no {info}")
     found = (element.findtext(f"{{{H005_NS}}}{version_tag}") or "").strip()
     if found != version:
-        raise EbicsError(text=f"HPB answer offers {version_tag} {found!r}, only {version} is supported")
+        raise EbicsError(
+            text=f"HPB answer offers {version_tag} {found!r}, only {version} is supported"
+        )
     der = element.findtext(f"{{{DS_NS}}}X509Data/{{{DS_NS}}}X509Certificate")
     if not der:
         raise EbicsError(text=f"HPB answer has no certificate in {info}")
@@ -223,7 +229,9 @@ def parse_hpb_order_data(data: bytes) -> BankCertificates:
     if root.tag != f"{{{H005_NS}}}HPBResponseOrderData":
         raise EbicsError(text="HPB order data is not HPBResponseOrderData")
     return BankCertificates(
-        authentication=_certificate(root, "AuthenticationPubKeyInfo", "AuthenticationVersion", "X002"),
+        authentication=_certificate(
+            root, "AuthenticationPubKeyInfo", "AuthenticationVersion", "X002"
+        ),
         encryption=_certificate(root, "EncryptionPubKeyInfo", "EncryptionVersion", "E002"),
         host_id=(root.findtext(f"{{{H005_NS}}}HostID") or "").strip(),
     )
