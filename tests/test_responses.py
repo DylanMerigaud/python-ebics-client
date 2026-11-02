@@ -185,6 +185,18 @@ def test_decrypt_order_data() -> None:
     assert responses.decrypt_order_data(key, encrypted_key, ciphertext) == b"payload"
 
 
+@pytest.mark.parametrize(
+    "compressed",
+    [zlib.compress(b"payload")[:-3], zlib.compress(b"payload") + b"tail"],
+    ids=["truncated", "trailing"],
+)
+def test_decrypt_order_data_refuses_bad_zlib(compressed: bytes) -> None:
+    key = pooled_key(2)
+    encrypted_key, ciphertext = crypto.e002_encrypt(key.public_key(), compressed)
+    with pytest.raises(EbicsError, match="could not be decrypted"):
+        responses.decrypt_order_data(key, encrypted_key, ciphertext)
+
+
 def test_parse_hpb_order_data() -> None:
     auth = crypto.generate_certificate(pooled_key(3), crypto.AUTHENTICATION, "BANK")
     enc = crypto.generate_certificate(pooled_key(4), crypto.ENCRYPTION, "BANK")

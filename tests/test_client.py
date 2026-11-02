@@ -4,6 +4,7 @@ import io
 import os
 import urllib.request
 import zipfile
+import zlib
 from datetime import date
 from pathlib import Path
 
@@ -349,6 +350,71 @@ def test_negative_receipt_keeps_the_file(monkeypatch: pytest.MonkeyPatch) -> Non
         client.download(Service.CAMT_053_CH)
     last_request = etree.fromstring(recorder.exchanges[-1][0])
     assert last_request.findtext(".//{urn:org:ebics:H005}ReceiptCode") == "1"
+    assert bank.pending(Service.CAMT_053_CH) == 1
+
+
+def assert_negative_receipt(recorder: Recorder) -> None:
+    last_request = etree.fromstring(recorder.exchanges[-1][0])
+    assert last_request.findtext(".//{urn:org:ebics:H005}ReceiptCode") == "1"
+
+
+@pytest.mark.parametrize("damage", ["truncated", "trailing"])
+def test_bad_zlib_download_gets_negative_receipt(
+    monkeypatch: pytest.MonkeyPatch, damage: str
+) -> None:
+    bank = new_bank()
+    bank.register_download(Service.CAMT_053_CH, b"<a/>", raw=True)
+    client, recorder = onboarded(bank)
+    real = zlib.compress
+
+    def damaged(data: bytes, *args: int) -> bytes:
+        out = real(data, *args)
+        return out[:-4] if damage == "truncated" else out + b"junk"
+
+    monkeypatch.setattr(zlib, "compress", damaged)  # the bank compresses the download
+    with pytest.raises(EbicsError, match="could not be decrypted"):
+        client.download(Service.CAMT_053_CH, unzip=False)
+    assert_negative_receipt(recorder)
+    assert bank.pending(Service.CAMT_053_CH) == 1
+
+
+def _zip(**patch: int) -> bytes:
+    """A one-file ZIP, its central directory entry patched at the given offsets."""
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as archive:
+        archive.writestr("camt.053_001.xml", b"<Document>" + b"x" * 200 + b"</Document>")
+    data = bytearray(buffer.getvalue())
+    central = data.index(b"PK\x01\x02")
+    for name, value in patch.items():
+        offset = {"flags": 8, "method": 10, "crc": 16}[name]
+        data[central + offset] = value
+    return bytes(data)
+
+
+def _corrupt_deflate() -> bytes:
+    data = bytearray(_zip())
+    start = 30 + len("camt.053_001.xml")  # local header, then the deflate stream
+    data[start : start + 4] = b"\xff\xff\xff\xff"
+    return bytes(data)
+
+
+@pytest.mark.parametrize(
+    "archive",
+    [
+        _zip(crc=0x00),  # BadZipFile: bad CRC-32
+        _zip(method=99),  # NotImplementedError: unknown compression method
+        _zip(flags=0x01),  # RuntimeError: encrypted entry
+        _corrupt_deflate(),  # zlib.error
+    ],
+    ids=["bad-crc", "unknown-method", "encrypted", "corrupt-deflate"],
+)
+def test_broken_zip_gets_negative_receipt(archive: bytes) -> None:
+    bank = new_bank()
+    bank.register_download(Service.CAMT_053_CH, archive, raw=True)
+    client, recorder = onboarded(bank)
+    with pytest.raises(EbicsError, match="ZIP"):
+        client.download(Service.CAMT_053_CH)
+    assert_negative_receipt(recorder)
     assert bank.pending(Service.CAMT_053_CH) == 1
 
 

@@ -7,6 +7,7 @@ import io
 import urllib.error
 import urllib.request
 import zipfile
+import zlib
 from datetime import date
 from typing import Callable
 
@@ -56,14 +57,27 @@ class HttpTransport:
 
 
 def _unzip(data: bytes) -> list[bytes]:
+    """Unpack a ZIP container; every failure becomes an EbicsError (negative receipt)."""
     try:
         archive = zipfile.ZipFile(io.BytesIO(data))
-    except zipfile.BadZipFile as exc:
+    except (zipfile.BadZipFile, zipfile.LargeZipFile, ValueError, OSError) as exc:
         raise EbicsError(text="the bank announced a ZIP container but sent no ZIP data") from exc
     entries = [info for info in archive.infolist() if not info.is_dir()]
     if sum(info.file_size for info in entries) > MAX_UNPACKED_SIZE:
         raise EbicsError(text="the ZIP container unpacks to more than 1 GiB, refused")
-    return [archive.read(info) for info in entries]
+    try:
+        return [archive.read(info) for info in entries]
+    except (
+        zipfile.BadZipFile,
+        zipfile.LargeZipFile,
+        NotImplementedError,
+        RuntimeError,
+        zlib.error,
+        ValueError,
+        EOFError,
+        OSError,
+    ) as exc:
+        raise EbicsError(text=f"the ZIP container could not be unpacked: {exc}") from exc
 
 
 class EbicsClient:

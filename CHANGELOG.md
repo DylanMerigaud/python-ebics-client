@@ -18,7 +18,10 @@ bank, not yet against a production bank.
 - X002 authentication signature on every request, verified on every bank response.
 - Order data encryption and decryption (E002, AES-128-CBC with the EBICS padding), zlib
   compression, A006 signature (RSASSA-PSS, SHA-256) on uploads.
-- BTD downloads with several segments, receipts, and unpacking of ZIP containers.
+- BTD downloads with several segments, receipts, and unpacking of ZIP containers. Truncated
+  zlib data, bytes after the zlib stream and any ZIP failure (bad CRC, unsupported compression,
+  encrypted entry, corrupt deflate data) raise `EbicsError` and send the bank the negative
+  receipt (code 1), so the bank keeps the file.
 - BTU uploads with segmentation and an optional file name, behind `allow_uploads=True`.
   CR, LF and Ctrl-Z are removed from the order data once, before signing, and that normalized
   document is what is signed (A006), digested (DataDigest) and sent, as railslove/epics does:

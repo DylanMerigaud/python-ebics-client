@@ -188,7 +188,11 @@ def compress(data: bytes) -> bytes:
 
 
 def decompress(data: bytes, max_size: int = 1 << 30) -> bytes:
-    """zlib-decompress order data, refusing output larger than max_size bytes."""
+    """zlib-decompress order data, refusing output larger than max_size bytes.
+
+    Raises ValueError on invalid data, on a truncated stream (no end of stream
+    reached) and on bytes after the end of the stream.
+    """
     decompressor = zlib.decompressobj()
     try:
         out = decompressor.decompress(data, max_size)
@@ -196,6 +200,10 @@ def decompress(data: bytes, max_size: int = 1 << 30) -> bytes:
         raise ValueError(f"order data is not valid zlib data: {exc}") from exc
     if decompressor.unconsumed_tail:
         raise ValueError(f"decompressed order data exceeds {max_size} bytes")
+    if not decompressor.eof:
+        raise ValueError("order data is truncated: the zlib stream does not end")
+    if decompressor.unused_data:
+        raise ValueError("order data has trailing bytes after the zlib stream")
     return out
 
 

@@ -106,6 +106,17 @@ def test_zlib_helpers() -> None:
         crypto.decompress(zlib.compress(b"a" * 1000), max_size=100)
 
 
+def test_decompress_refuses_truncated_data() -> None:
+    compressed = zlib.compress(b"order data " * 100)
+    with pytest.raises(ValueError, match="truncated"):
+        crypto.decompress(compressed[:-4])  # checksum missing, stream not finished
+
+
+def test_decompress_refuses_trailing_data() -> None:
+    with pytest.raises(ValueError, match="trailing"):
+        crypto.decompress(zlib.compress(b"order data") + b"garbage")
+
+
 def test_self_signed_certificate() -> None:
     key = pooled_key(0)
     cert = crypto.generate_certificate(key, crypto.SIGNATURE, common_name="USER1", country="CH")
