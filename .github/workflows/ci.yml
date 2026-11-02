@@ -1,0 +1,48 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.9", "3.10", "3.11", "3.12", "3.13"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: Install
+        run: python -m pip install ".[test]" ruff mypy lxml-stubs
+      - name: Lint
+        run: ruff check .
+      - name: Type check
+        run: mypy ebics_client
+      - name: Tests
+        run: python -m pytest -q
+
+  wheel-examples:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Build the wheel
+        run: |
+          python -m pip install build
+          python -m build --wheel
+      - name: Install it in a fresh virtual environment
+        run: |
+          python -m venv /tmp/fresh
+          /tmp/fresh/bin/python -m pip install dist/*.whl
+      - name: Run the examples
+        run: |
+          for example in examples/*.py; do
+            echo "== $example"
+            OSS_LIB_OFFLINE=1 /tmp/fresh/bin/python "$example"
+          done

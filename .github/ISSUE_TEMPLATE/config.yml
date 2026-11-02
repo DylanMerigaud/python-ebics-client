@@ -1,0 +1,5 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Security problem
+    url: https://github.com/DylanMerigaud/python-ebics-client/security/advisories/new
+    about: Report a vulnerability privately, not in a public issue.
