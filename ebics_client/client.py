@@ -29,6 +29,7 @@ class HttpTransport:
     """Default transport: HTTPS POST with urllib, content type text/xml; charset=UTF-8."""
 
     def __init__(self, timeout: float = 30.0, allow_insecure_http: bool = False) -> None:
+        """timeout is in seconds; plain http:// is refused unless allow_insecure_http."""
         self.timeout = timeout
         self.allow_insecure_http = allow_insecure_http
 
@@ -87,6 +88,7 @@ class EbicsClient:
         product: str = "python-ebics-client 0.1.0",
         language: str = "en",
     ) -> None:
+        """transport defaults to HttpTransport(timeout); product and language fill Product."""
         self.bank = bank
         self.user = user
         self.keyring = keyring
@@ -211,7 +213,11 @@ class EbicsClient:
                     self.context, self.keyring, transaction_id, number, number == total
                 )
             )
-            if answer.segment_number != number or answer.order_data is None:
+            if (
+                answer.transaction_id not in (None, transaction_id)
+                or answer.segment_number != number
+                or answer.order_data is None
+            ):
                 raise EbicsError(text=f"expected segment {number} of {total}")
             segments.append(answer.order_data)
 

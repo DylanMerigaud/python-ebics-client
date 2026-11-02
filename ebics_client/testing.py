@@ -30,6 +30,7 @@ from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 from cryptography.x509.oid import NameOID
 from lxml import etree
 
+from .errors import SignatureInvalid
 from .keyring import Bank
 from .service import Service
 
@@ -206,6 +207,12 @@ def _certificate_in(element: etree._Element | None) -> x509.Certificate:
     return x509.load_der_x509_certificate(base64.b64decode(der))
 
 
+def _need(element: etree._Element | None) -> etree._Element:
+    if element is None:
+        raise _Refusal("091010", text="[EBICS_INVALID_XML] element missing")
+    return element
+
+
 def _parse(data: bytes) -> etree._Element:
     parser = etree.XMLParser(resolve_entities=False, no_network=True, load_dtd=False)
     return etree.fromstring(data, parser)
@@ -221,6 +228,7 @@ class FakeBank:
         authentication_key: rsa.RSAPrivateKey | None = None,
         encryption_key: rsa.RSAPrivateKey | None = None,
     ) -> None:
+        """Create a bank; its X002 and E002 keys are generated unless given."""
         self.host_id = host_id
         self.url = url
         self.subscribers: dict[tuple[str, str], Subscriber] = {}
@@ -299,7 +307,7 @@ class FakeBank:
         client.hia()
         hashes = client.hpb()
         if hashes != self.key_hashes():
-            raise AssertionError("bank key hashes differ from the bank's letter")
+            raise SignatureInvalid(text="the HPB hashes differ from the bank's letter")
         client.keyring.bank_keys_verified = True
 
     # Transport ----------------------------------------------------------------
@@ -372,8 +380,7 @@ class FakeBank:
             order_type = root.findtext("e:header/e:static/e:OrderDetails/e:AdminOrderType", namespaces=_NS)
             if order_type != "H3K":
                 raise _Refusal("091005", text="unsupported order type")
-            transfer = root.find("e:body/e:DataTransfer", _NS)
-            assert transfer is not None
+            transfer = _need(root.find("e:body/e:DataTransfer", _NS))
             order_bytes = zlib.decompress(base64.b64decode(transfer.findtext("e:OrderData", namespaces=_NS) or ""))
             data = _parse(order_bytes)
             signature_xml = _parse(
@@ -506,9 +513,7 @@ class FakeBank:
     # ebicsRequest ---------------------------------------------------------------
 
     def _request(self, root: etree._Element) -> bytes:
-        static = root.find("e:header/e:static", _NS)
-        assert static is not None
-        transaction_id = static.findtext("e:TransactionID", namespaces=_NS)
+        transaction_id = root.findtext("e:header/e:static/e:TransactionID", namespaces=_NS)
         phase = root.findtext("e:header/e:mutable/e:TransactionPhase", namespaces=_NS) or ""
         transaction: _Transaction | None = None
         try:
@@ -528,7 +533,9 @@ class FakeBank:
             self._check_auth(root, subscriber)
             self._check_nonce(root)
             self._check_bank_digests(root)
-            order_type = static.findtext("e:OrderDetails/e:AdminOrderType", namespaces=_NS)
+            order_type = root.findtext(
+                "e:header/e:static/e:OrderDetails/e:AdminOrderType", namespaces=_NS
+            )
             if order_type == "BTD":
                 return self._download_init(root, subscriber)
             if order_type == "BTU":
@@ -548,8 +555,7 @@ class FakeBank:
         if element is None:
             raise _Refusal("091112", text="no Service")
         container = element.find("e:Container", _NS)
-        msg = element.find("e:MsgName", _NS)
-        assert msg is not None
+        msg = _need(element.find("e:MsgName", _NS))
         return Service(
             name=element.findtext("e:ServiceName", namespaces=_NS) or "",
             msg_name=msg.text or "",
@@ -562,8 +568,7 @@ class FakeBank:
         )
 
     def _download_init(self, root: etree._Element, subscriber: Subscriber) -> bytes:
-        params = root.find("e:header/e:static/e:OrderDetails/e:BTDOrderParams", _NS)
-        assert params is not None
+        params = _need(root.find("e:header/e:static/e:OrderDetails/e:BTDOrderParams", _NS))
         service = self._service(params)
         start = params.findtext("e:DateRange/e:Start", namespaces=_NS)
         end = params.findtext("e:DateRange/e:End", namespaces=_NS)
@@ -627,8 +632,8 @@ class FakeBank:
 
     def _upload_init(self, root: etree._Element, subscriber: Subscriber) -> bytes:
         params = root.find("e:header/e:static/e:OrderDetails/e:BTUOrderParams", _NS)
-        transfer = root.find("e:body/e:DataTransfer", _NS)
-        assert params is not None and transfer is not None
+        transfer = _need(root.find("e:body/e:DataTransfer", _NS))
+        params = _need(params)
         service = self._service(params)
         digest = base64.b64decode(
             transfer.findtext("e:DataEncryptionInfo/e:EncryptionPubKeyDigest", namespaces=_NS) or ""
@@ -657,8 +662,7 @@ class FakeBank:
         )
 
     def _upload_segment(self, root: etree._Element, transaction_id: str, transaction: _Transaction) -> bytes:
-        segment = root.find("e:header/e:mutable/e:SegmentNumber", _NS)
-        assert segment is not None
+        segment = _need(root.find("e:header/e:mutable/e:SegmentNumber", _NS))
         number = int(segment.text or "0")
         if number != len(transaction.segments) + 1 or number > transaction.expected_segments:
             raise _Refusal("091104", text="unexpected segment number")
@@ -686,7 +690,8 @@ class FakeBank:
         certificate = transaction.subscriber.signature_certificate
         if certificate is None or not _a006_ok(certificate, base64.b64decode(value), data):
             raise _Refusal(business="091301", text="electronic signature does not verify")
-        assert transaction.service is not None
+        if transaction.service is None:
+            raise _Refusal("061099", text="upload without service")
         self.uploads.append(
             ReceivedUpload(
                 order_id=transaction.order_id,
@@ -746,8 +751,7 @@ class FakeBank:
         etree.SubElement(body, _q("ReturnCode"), authenticate="true").text = business
         self._sign(root)
         if self.tamper_content:
-            business_code = body.find(_q("ReturnCode"))
-            assert business_code is not None
+            business_code = _need(body.find(_q("ReturnCode")))
             business_code.text = "000000" if business != "000000" else "091116"
         return etree.tostring(root, xml_declaration=True, encoding="UTF-8")
 
@@ -762,8 +766,7 @@ class FakeBank:
         etree.SubElement(reference, _q("DigestMethod", DS), Algorithm=_SHA256)
         etree.SubElement(reference, _q("DigestValue", DS)).text = _b64(_auth_digest(root))
         value = etree.SubElement(signature, _q("SignatureValue", DS))
-        header = root.find(_q("header"))
-        assert header is not None
+        header = _need(root.find(_q("header")))
         header.addnext(signature)
         raw = self.authentication_key.sign(_c14n(info), padding.PKCS1v15(), hashes.SHA256())
         if self.tamper_signatures:

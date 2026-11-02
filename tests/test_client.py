@@ -413,6 +413,6 @@ def test_onboard_detects_a_substituted_bank_key() -> None:
         return hashes
 
     client.hpb = forged_hpb  # type: ignore[method-assign]
-    with pytest.raises(AssertionError):
+    with pytest.raises(SignatureInvalid):
         bank.onboard(client)
     assert client.keyring.bank_keys_verified is False

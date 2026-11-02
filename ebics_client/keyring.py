@@ -84,6 +84,7 @@ class Keyring:
         bank_encryption_certificate: x509.Certificate | None = None,
         bank_keys_verified: bool = False,
     ) -> None:
+        """Check that each certificate carries its key and hold them all."""
         pairs = (
             (crypto.SIGNATURE, signature_key, signature_certificate),
             (crypto.AUTHENTICATION, authentication_key, authentication_certificate),

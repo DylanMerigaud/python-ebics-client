@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from . import crypto, letter, requests, responses, xmlsig
+from . import crypto, letter
 from .client import EbicsClient, HttpTransport
 from .errors import (
     BankKeysNotVerified,
@@ -39,7 +39,4 @@ __all__ = [
     "__version__",
     "crypto",
     "letter",
-    "requests",
-    "responses",
-    "xmlsig",
 ]
