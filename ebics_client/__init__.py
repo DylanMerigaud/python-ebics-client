@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from . import crypto, letter
+from . import crypto, letter, requests, xmlsig
 from .errors import (
     BankKeysNotVerified,
     EbicsBusinessError,
@@ -14,6 +14,7 @@ from .errors import (
     UploadsDisabled,
 )
 from .keyring import Bank, Keyring, User
+from .service import Service
 
 __version__ = "0.1.0"
 
@@ -26,10 +27,13 @@ __all__ = [
     "Keyring",
     "KeyringError",
     "NoDownloadData",
+    "Service",
     "SignatureInvalid",
     "UploadsDisabled",
     "User",
     "__version__",
     "crypto",
     "letter",
+    "requests",
+    "xmlsig",
 ]

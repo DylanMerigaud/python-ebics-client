@@ -189,6 +189,14 @@ class Keyring:
             and self.bank_encryption_certificate is not None
         )
 
+    def bank_certificates(self) -> tuple[x509.Certificate, x509.Certificate]:
+        """The bank's (X002, E002) certificates, raising KeyringError before HPB."""
+        authentication = self.bank_authentication_certificate
+        encryption = self.bank_encryption_certificate
+        if authentication is None or encryption is None:
+            raise KeyringError(text="the bank keys are unknown, run hpb() first")
+        return authentication, encryption
+
     def bank_authentication_key(self) -> rsa.RSAPublicKey:
         """The bank's X002 public key, raising KeyringError before HPB."""
         if self.bank_authentication_certificate is None:
