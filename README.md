@@ -47,6 +47,12 @@ Uploads are off by default.
 pip install python-ebics-client
 ```
 
+Until the first PyPI upload lands, install the v0.1.0 release from GitHub:
+
+```
+pip install "python-ebics-client @ git+https://github.com/DylanMerigaud/python-ebics-client@v0.1.0"
+```
+
 ## Quickstart
 
 This runs offline against `FakeBank`, a bank that lives in your process:
