@@ -482,6 +482,67 @@ def test_keyring_persists_between_sessions(tmp_path: Path) -> None:
     assert again.download(Service.CAMT_053_CH) == [b"<a/>"]
 
 
+def test_hpb_with_a_1024_bit_bank_key_is_a_keyring_error() -> None:
+    from cryptography.hazmat.primitives.asymmetric import rsa
+
+    bank = FakeBank(authentication_key=rsa.generate_private_key(65537, 1024))
+    client, _ = make_client(bank)
+    client.ini()
+    client.hia()
+    with pytest.raises(KeyringError, match="1024 bits"):
+        client.hpb()
+    assert client.keyring.bank_authentication_certificate is None
+
+
+def test_hpb_without_host_id_refused(monkeypatch: pytest.MonkeyPatch) -> None:
+    import dataclasses
+
+    from ebics_client import responses
+
+    real = responses.parse_hpb_order_data
+
+    def no_host(data: bytes) -> responses.BankCertificates:
+        return dataclasses.replace(real(data), host_id="")
+
+    monkeypatch.setattr(responses, "parse_hpb_order_data", no_host)
+    bank = new_bank()
+    client, _ = make_client(bank)
+    client.ini()
+    client.hia()
+    with pytest.raises(EbicsError, match="HPB answer is for host"):
+        client.hpb()
+    assert client.keyring.bank_authentication_certificate is None
+
+
+class FakeAnswer(io.BytesIO):
+    """What urlopen returns: a readable body usable as a context manager."""
+
+
+@pytest.mark.parametrize("size", [100, 101])
+def test_http_transport_caps_the_response_size(
+    monkeypatch: pytest.MonkeyPatch, size: int
+) -> None:
+    reads: list[int] = []
+
+    class Answer(FakeAnswer):
+        def read(self, amount: int | None = -1) -> bytes:  # type: ignore[override]
+            reads.append(-1 if amount is None else amount)
+            return super().read(amount)
+
+    monkeypatch.setattr(urllib.request, "urlopen", lambda request, timeout: Answer(b"x" * size))
+    transport = HttpTransport(max_response_bytes=100)
+    if size <= 100:
+        assert transport("https://bank.example/ebics", b"<x/>") == b"x" * size
+    else:
+        with pytest.raises(EbicsError, match="more than 100 bytes"):
+            transport("https://bank.example/ebics", b"<x/>")
+    assert reads and all(0 < amount <= 101 for amount in reads)  # never an unbounded read
+
+
+def test_http_transport_default_cap_is_64_mib() -> None:
+    assert HttpTransport().max_response_bytes == 64 * 1024 * 1024
+
+
 def test_http_transport_refuses_plain_http() -> None:
     transport = HttpTransport()
     with pytest.raises(EbicsError, match="non-HTTPS"):

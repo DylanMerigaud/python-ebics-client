@@ -25,14 +25,26 @@ Transport = Callable[[str, bytes], bytes]
 #: Unpacked ZIP containers larger than this are refused (zip bomb guard).
 MAX_UNPACKED_SIZE = 1 << 30
 
+#: Default cap of an HTTP answer: one EBICS segment is about 1 MB of base64.
+MAX_RESPONSE_BYTES = 64 * 1024 * 1024
+
 
 class HttpTransport:
     """Default transport: HTTPS POST with urllib, content type text/xml; charset=UTF-8."""
 
-    def __init__(self, timeout: float = 30.0, allow_insecure_http: bool = False) -> None:
-        """timeout is in seconds; plain http:// is refused unless allow_insecure_http."""
+    def __init__(
+        self,
+        timeout: float = 30.0,
+        allow_insecure_http: bool = False,
+        max_response_bytes: int = MAX_RESPONSE_BYTES,
+    ) -> None:
+        """timeout is in seconds; plain http:// is refused unless allow_insecure_http.
+
+        An answer longer than max_response_bytes (default 64 MiB) raises EbicsError.
+        """
         self.timeout = timeout
         self.allow_insecure_http = allow_insecure_http
+        self.max_response_bytes = max_response_bytes
 
     def __call__(self, url: str, body: bytes) -> bytes:
         """POST body to url and return the response body."""
@@ -48,12 +60,16 @@ class HttpTransport:
         )
         try:
             with urllib.request.urlopen(request, timeout=self.timeout) as answer:
-                data: bytes = answer.read()
-                return data
+                data: bytes = answer.read(self.max_response_bytes + 1)
         except urllib.error.HTTPError as exc:
             raise EbicsError(text=f"HTTP {exc.code} from {url}") from exc
         except urllib.error.URLError as exc:
             raise EbicsError(text=f"cannot reach {url}: {exc.reason}") from exc
+        if len(data) > self.max_response_bytes:
+            raise EbicsError(
+                text=f"the answer from {url} is more than {self.max_response_bytes} bytes, refused"
+            )
+        return data
 
 
 def _unzip(data: bytes) -> list[bytes]:
@@ -191,9 +207,10 @@ class EbicsClient:
             responses.decode_segments([answer.order_data]),
         )
         certificates = responses.parse_hpb_order_data(data)
-        if certificates.host_id and certificates.host_id != self.bank.host_id:
+        if certificates.host_id != self.bank.host_id:
             raise EbicsError(
-                text=f"HPB answer is for host {certificates.host_id}, not {self.bank.host_id}"
+                text=f"HPB answer is for host {certificates.host_id or '(none)'}, "
+                f"not {self.bank.host_id}"
             )
         unchanged = (
             self.keyring.bank_authentication_certificate == certificates.authentication

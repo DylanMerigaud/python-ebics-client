@@ -36,8 +36,8 @@ __all__ = [
 #: Technical codes that mean success (or the expected answer to a receipt).
 TECHNICAL_OK = frozenset({"000000", "011000", "011001"})
 #: Business codes that mean success; 031001 (order params ignored) and 011301
-#: (no online checks) are warnings.
-BUSINESS_OK = frozenset({"", "000000", "011000", "011301", "031001"})
+#: (no online checks) are warnings. A missing business code is an error.
+BUSINESS_OK = frozenset({"000000", "011000", "011301", "031001"})
 
 _ROOTS = ("ebicsResponse", "ebicsKeyManagementResponse")
 
@@ -113,6 +113,10 @@ class Response:
         """Raise the matching EbicsError unless both return codes mean success."""
         if self.technical_code not in TECHNICAL_OK:
             raise EbicsTechnicalError(self.technical_code, self.report_text)
+        if not self.business_code:
+            # body/ReturnCode is mandatory in both H005 response schemas: an answer
+            # without it is not a success.
+            raise EbicsError(text=f"the bank's {self.kind} has no business ReturnCode")
         if self.business_code == "090005":
             raise NoDownloadData()
         if self.business_code not in BUSINESS_OK:

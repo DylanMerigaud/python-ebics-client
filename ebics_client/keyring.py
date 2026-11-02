@@ -57,7 +57,10 @@ def _rsa_public(certificate: x509.Certificate) -> rsa.RSAPublicKey:
     public = certificate.public_key()
     if not isinstance(public, rsa.RSAPublicKey):
         raise KeyringError(text="EBICS certificates must carry an RSA key")
-    crypto.check_key_size(public)
+    try:
+        crypto.check_key_size(public)
+    except ValueError as exc:
+        raise KeyringError(text=f"the bank certificate is refused: {exc}") from exc
     return public
 
 
@@ -166,7 +169,10 @@ class Keyring:
         }.get(kind)
         if attribute is None:
             raise ValueError(f"unknown key kind {kind!r}, use A006, X002 or E002")
-        certificate = crypto.certificate_from_bytes(data)
+        try:
+            certificate = crypto.certificate_from_bytes(data)
+        except ValueError as exc:
+            raise KeyringError(text=f"cannot read the {kind} certificate: {exc}") from exc
         if not _same_key(certificate, getattr(self, f"{attribute}_key")):
             raise KeyringError(text=f"the certificate does not carry the {kind} key")
         setattr(self, f"{attribute}_certificate", certificate)
@@ -250,36 +256,56 @@ class Keyring:
 
     @classmethod
     def from_dict(cls, data: dict[str, Any], passphrase: str | bytes) -> Keyring:
-        """Rebuild a keyring from to_dict output, raising KeyringError on a bad passphrase."""
+        """Rebuild a keyring from to_dict output.
+
+        Raises KeyringError on a wrong passphrase, a missing entry or a certificate
+        that cannot be read.
+        """
         if data.get("format") != _FORMAT or data.get("version") != _FORMAT_VERSION:
             raise KeyringError(text="not a python-ebics-client keyring (version 1)")
         secret = _passphrase_bytes(passphrase)
 
+        def entry(name: str) -> dict[str, str]:
+            found = data.get(name)
+            if not isinstance(found, dict):
+                raise KeyringError(text=f"damaged keyring: no {name} entry")
+            return found
+
         def key(entry: dict[str, str]) -> rsa.RSAPrivateKey:
             try:
                 loaded = serialization.load_pem_private_key(entry["key"].encode(), secret)
-            except (ValueError, TypeError) as exc:
+            except (KeyError, AttributeError, ValueError, TypeError) as exc:
                 raise KeyringError(text="wrong passphrase or damaged keyring") from exc
             if not isinstance(loaded, rsa.RSAPrivateKey):
                 raise KeyringError(text="keyring holds a non-RSA key")
             return loaded
 
-        def cert(pem: str | None) -> x509.Certificate | None:
-            return x509.load_pem_x509_certificate(pem.encode()) if pem else None
+        def cert(pem: str | None, name: str) -> x509.Certificate | None:
+            if not pem:
+                return None
+            try:
+                return x509.load_pem_x509_certificate(pem.encode())
+            except (AttributeError, ValueError, TypeError) as exc:
+                raise KeyringError(text=f"damaged keyring: invalid {name} certificate") from exc
 
-        def user_cert(entry: dict[str, str]) -> x509.Certificate:
-            return x509.load_pem_x509_certificate(entry["certificate"].encode())
+        def user_cert(name: str) -> x509.Certificate:
+            found = cert(entry(name).get("certificate"), name)
+            if found is None:
+                raise KeyringError(text=f"damaged keyring: no {name} certificate")
+            return found
 
         bank = data.get("bank") or {}
+        if not isinstance(bank, dict):
+            raise KeyringError(text="damaged keyring: invalid bank entry")
         return cls(
-            key(data["signature"]),
-            user_cert(data["signature"]),
-            key(data["authentication"]),
-            user_cert(data["authentication"]),
-            key(data["encryption"]),
-            user_cert(data["encryption"]),
-            bank_authentication_certificate=cert(bank.get("authentication")),
-            bank_encryption_certificate=cert(bank.get("encryption")),
+            key(entry("signature")),
+            user_cert("signature"),
+            key(entry("authentication")),
+            user_cert("authentication"),
+            key(entry("encryption")),
+            user_cert("encryption"),
+            bank_authentication_certificate=cert(bank.get("authentication"), "bank X002"),
+            bank_encryption_certificate=cert(bank.get("encryption"), "bank E002"),
             bank_keys_verified=bool(data.get("bank_keys_verified", False)),
         )
 

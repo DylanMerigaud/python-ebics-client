@@ -6,7 +6,10 @@ import stat
 from pathlib import Path
 
 import pytest
-from cryptography.hazmat.primitives import serialization
+from cryptography import x509
+from cryptography.hazmat.primitives import hashes, serialization
+from cryptography.hazmat.primitives.asymmetric import rsa
+from cryptography.x509.oid import NameOID
 
 from ebics_client import Bank, Keyring, KeyringError, User, crypto, letter
 from tests.conftest import pooled_key
@@ -144,3 +147,60 @@ def test_bank_key_hashes_need_hpb() -> None:
         "X002": letter.format_hash(crypto.certificate_digest(bank_cert)),
         "E002": letter.format_hash(crypto.certificate_digest(bank_enc)),
     }
+
+
+def _certificate_for(public_key: rsa.RSAPublicKey) -> x509.Certificate:
+    """A certificate carrying public_key, issued (signed) by a pooled 2048 bit key."""
+    name = x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, "BANK")])
+    issued = crypto.generate_certificate(pooled_key(3), crypto.AUTHENTICATION, "BANK")
+    return (
+        x509.CertificateBuilder()
+        .subject_name(name)
+        .issuer_name(name)
+        .public_key(public_key)
+        .serial_number(1)
+        .not_valid_before(issued.not_valid_before_utc)
+        .not_valid_after(issued.not_valid_after_utc)
+        .sign(pooled_key(3), hashes.SHA256())
+    )
+
+
+@pytest.mark.parametrize("bits", [1024, 8192])
+def test_bank_certificate_with_bad_key_size_is_a_keyring_error(bits: int) -> None:
+    if bits == 1024:
+        public = rsa.generate_private_key(65537, 1024).public_key()
+    else:  # an 8192 bit modulus; nothing is signed or encrypted with it
+        public = rsa.RSAPublicNumbers(65537, (1 << 8191) | 0x10001).public_key()
+    certificate = _certificate_for(public)
+    keyring = make_keyring()
+    with pytest.raises(KeyringError, match=f"{bits} bits"):
+        keyring.set_bank_certificates(certificate, certificate)
+    keyring.bank_authentication_certificate = certificate
+    with pytest.raises(KeyringError):
+        keyring.bank_authentication_key()
+
+
+@pytest.mark.parametrize(
+    "damage",
+    [
+        lambda d: d["signature"].__setitem__("certificate", "not a certificate"),
+        lambda d: d["bank"].__setitem__("authentication", "-----BEGIN CERTIFICATE-----\nAA"),
+        lambda d: d.pop("encryption"),
+    ],
+    ids=["user-certificate", "bank-certificate", "missing-entry"],
+)
+def test_damaged_keyring_dict_is_a_keyring_error(damage: object) -> None:
+    keyring = make_keyring()
+    keyring.set_bank_certificates(
+        crypto.generate_certificate(pooled_key(3), crypto.AUTHENTICATION, "BANK"),
+        crypto.generate_certificate(pooled_key(4), crypto.ENCRYPTION, "BANK"),
+    )
+    data = keyring.to_dict("secret")
+    damage(data)  # type: ignore[operator]
+    with pytest.raises(KeyringError):
+        Keyring.from_dict(data, "secret")
+
+
+def test_load_certificate_with_garbage_is_a_keyring_error() -> None:
+    with pytest.raises(KeyringError):
+        make_keyring().load_certificate("A006", b"-----BEGIN CERTIFICATE-----\ngarbage")

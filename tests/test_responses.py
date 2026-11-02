@@ -111,6 +111,31 @@ def test_receipt_done_is_not_an_error() -> None:
     responses.parse_response(xml).raise_for_codes()
 
 
+@pytest.mark.parametrize("body", ["", "<ReturnCode authenticate=\"true\"></ReturnCode>"])
+def test_missing_business_return_code_is_an_error(body: str) -> None:
+    xml = response(
+        "<TransactionID>0123456789ABCDEF0123456789ABCDEF</TransactionID>",
+        "<TransactionPhase>Transfer</TransactionPhase><ReturnCode>000000</ReturnCode>"
+        "<ReportText>[EBICS_OK] OK</ReportText>",
+        body,
+    )
+    parsed = responses.parse_response(xml)
+    with pytest.raises(EbicsError, match="no business ReturnCode"):
+        parsed.raise_for_codes()
+
+
+def test_missing_business_code_does_not_hide_a_technical_error() -> None:
+    xml = response(
+        "",
+        "<TransactionPhase>Initialisation</TransactionPhase><ReturnCode>091002</ReturnCode>"
+        "<ReportText>[EBICS_INVALID_USER_OR_USER_STATE] bad</ReportText>",
+        "",
+    )
+    with pytest.raises(EbicsTechnicalError) as info:
+        responses.parse_response(xml).raise_for_codes()
+    assert info.value.code == "091002"
+
+
 def test_keymanagement_response() -> None:
     xml = (
         b'<ebicsKeyManagementResponse xmlns="urn:org:ebics:H005" Version="H005" Revision="1">'

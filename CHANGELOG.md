@@ -35,6 +35,12 @@ bank, not yet against a production bank.
   verified, HTTPS only for the default transport.
 - `SignatureInvalid` raised for a bank answer whose X002 signature does not verify names the
   answer's technical and business return codes and report text, marked as unverified.
+- A bank certificate with a key outside 2048 to 4096 bits, and a keyring dict with a missing
+  entry or an unreadable certificate, raise `KeyringError` instead of a plain `ValueError`.
+- An answer without a business `ReturnCode` (mandatory in the H005 response schemas) raises
+  `EbicsError` instead of counting as success.
+- HPB order data must name the configured HostID; an answer without one is refused.
+- `HttpTransport(max_response_bytes=...)` caps the size of a bank answer (default 64 MiB).
 - `ebics_client.testing.FakeBank`, an in-process H005 bank for tests and offline examples.
 - Typed package (`py.typed`), Python 3.9 to 3.13, runtime dependencies `cryptography` and
   `lxml`.
