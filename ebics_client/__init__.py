@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from . import crypto, letter, requests, xmlsig
+from . import crypto, letter, requests, responses, xmlsig
 from .errors import (
     BankKeysNotVerified,
     EbicsBusinessError,
@@ -35,5 +35,6 @@ __all__ = [
     "crypto",
     "letter",
     "requests",
+    "responses",
     "xmlsig",
 ]
