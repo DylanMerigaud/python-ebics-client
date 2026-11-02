@@ -168,7 +168,9 @@ print("order id:", client.upload(Service.PAIN_001_CH, b"<Document/>"))
 ```
 
 `upload` compresses, signs (A006) and encrypts the data, sends it in segments, and returns the
-order id. Your bank must have given your user the right to sign the order type (signature
+order id. CR, LF and Ctrl-Z are removed from the order data before signing, as EBICS banks do
+when they hash it, and the signature, the `DataDigest` and the encrypted payload all cover that
+one normalized document, so the file the bank receives has no line breaks. Your bank must have given your user the right to sign the order type (signature
 class, and a second signer if the bank requires one). The library signs with your A006 key
 only; a dual-signature workflow is not part of version 0.1.0. Test with a small file and the
 bank's test environment first.

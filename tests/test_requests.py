@@ -106,8 +106,8 @@ def test_h3k_request_validates_and_is_signed() -> None:
     assert_valid(sig_data, "ebics_signature_S002.xsd")
     value = etree.fromstring(sig_data).findtext(".//s:SignatureValue", namespaces=NS)
     assert value is not None
-    signed_bytes = crypto.normalize_order_data(data)
-    assert crypto.a006_verify(ring.signature_key.public_key(), base64.b64decode(value), signed_bytes)
+    assert b"\r" not in data and b"\n" not in data  # signed bytes are the sent bytes
+    assert crypto.a006_verify(ring.signature_key.public_key(), base64.b64decode(value), data)
     # Not encrypted: there is no bank key yet when H3K is sent.
 
 
@@ -208,7 +208,7 @@ def test_btu_requests_validate_and_carry_signature() -> None:
     sent = zlib.decompress(
         crypto.aes_decrypt(transaction_key, base64.b64decode(text(transfer, "//e:OrderData")))
     )
-    assert sent == document  # transmitted unchanged, only the hash input is normalized
+    assert sent == normalized  # the bytes hashed and signed are the bytes transmitted
 
 
 def test_upload_segments_are_at_most_one_megabyte() -> None:
@@ -218,7 +218,8 @@ def test_upload_segments_are_at_most_one_megabyte() -> None:
     assert len(upload.segments) == 3
     assert all(len(s) <= 1024 * 1024 for s in upload.segments)
     joined = b"".join(base64.b64decode(s) for s in upload.segments)
-    assert zlib.decompress(crypto.aes_decrypt(upload.transaction_key, joined)) == payload
+    sent = zlib.decompress(crypto.aes_decrypt(upload.transaction_key, joined))
+    assert sent == crypto.normalize_order_data(payload)
 
 
 def test_signature_flag_and_system_id() -> None:
@@ -232,3 +233,27 @@ def test_signature_flag_and_system_id() -> None:
     xml = requests.build_btu_init(ctx, ring, Service.PAIN_001_DE, upload, signature_flag=False)
     assert_valid(xml)
     assert etree.fromstring(xml).find(".//e:SignatureFlag", namespaces=NS) is None
+
+
+def test_order_data_documents_have_no_line_breaks() -> None:
+    ring = keyring(with_bank=False)
+    for builder in (requests.ini_order_data, requests.hia_order_data, requests.h3k_order_data):
+        data = builder(CTX, ring)
+        assert data == crypto.normalize_order_data(data), builder.__name__
+    signature = requests._user_signature_data(CTX, ring, b"<x/>")
+    assert signature == crypto.normalize_order_data(signature)
+
+
+def test_prepare_upload_signs_digests_and_sends_the_same_bytes() -> None:
+    ring = keyring()
+    document = b"<?xml version='1.0'?>\r\n<Document>\r\n  <a>1</a>\x1a\n</Document>\r\n"
+    normalized = b"<?xml version='1.0'?><Document>  <a>1</a></Document>"
+    upload = requests.prepare_upload(CTX, ring, document)
+    joined = b"".join(base64.b64decode(s) for s in upload.segments)
+    sent = zlib.decompress(crypto.aes_decrypt(upload.transaction_key, joined))
+    assert sent == normalized
+    assert upload.digest == hashlib.sha256(sent).digest()
+    sig_data = zlib.decompress(crypto.aes_decrypt(upload.transaction_key, upload.signature_data))
+    value = etree.fromstring(sig_data).findtext(".//s:SignatureValue", namespaces=NS)
+    assert value is not None
+    assert crypto.a006_verify(ring.signature_key.public_key(), base64.b64decode(value), sent)

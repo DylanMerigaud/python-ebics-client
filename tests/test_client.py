@@ -24,6 +24,7 @@ from ebics_client import (
     SignatureInvalid,
     UploadsDisabled,
     User,
+    crypto,
     letter,
 )
 from ebics_client.testing import FakeBank, sample_camt053
@@ -265,7 +266,7 @@ def test_uploads_disabled_by_default() -> None:
 def test_upload_verified_by_bank() -> None:
     bank = new_bank()
     client, recorder = onboarded(bank, allow_uploads=True)
-    document = b"<?xml version='1.0'?>\r\n<Document>\r\n  <pain/>\r\n</Document>\r\n"
+    document = b"<?xml version='1.0'?><Document><pain/></Document>"
     order_id = client.upload(Service.PAIN_001_CH, document, file_name="pain001.xml")
     (received,) = bank.uploads
     assert received.order_id == order_id
@@ -276,12 +277,37 @@ def test_upload_verified_by_bank() -> None:
     assert recorder.order_types()[-2:] == ["BTU", "Transfer"]
 
 
+PRETTY_PAIN001 = (
+    b'<?xml version="1.0" encoding="UTF-8"?>\r\n'
+    b'<Document xmlns="urn:iso:std:iso:20022:tech:xsd:pain.001.001.09">\r\n'
+    b"  <CstmrCdtTrfInitn>\r\n"
+    b"    <GrpHdr>\r\n"
+    b"      <MsgId>MSG-1</MsgId>\r\n"
+    b"      <NbOfTxs>1</NbOfTxs>\r\n"
+    b"    </GrpHdr>\r\n"
+    b"  </CstmrCdtTrfInitn>\r\n"
+    b"</Document>\r\n"
+)
+
+
+def test_upload_pretty_printed_crlf_document_is_normalized_once() -> None:
+    bank = new_bank()
+    client, _ = onboarded(bank, allow_uploads=True)
+    client.upload(Service.PAIN_001_CH, PRETTY_PAIN001)
+    (received,) = bank.uploads
+    # FakeBank hashes exactly what it decrypted: signature and digest cover these bytes.
+    assert received.data == crypto.normalize_order_data(PRETTY_PAIN001)
+    assert b"\r" not in received.data and b"\n" not in received.data
+    assert received.data.startswith(b'<?xml version="1.0" encoding="UTF-8"?><Document')
+    assert received.signature_verified
+
+
 def test_upload_in_several_segments() -> None:
     bank = new_bank()
     client, recorder = onboarded(bank, allow_uploads=True)
     document = os.urandom(2_200_000)
     client.upload(Service.PAIN_001_DE, document)
-    assert bank.uploads[0].data == document
+    assert bank.uploads[0].data == crypto.normalize_order_data(document)
     assert recorder.order_types()[-4:] == ["BTU", "Transfer", "Transfer", "Transfer"]
 
 

@@ -20,6 +20,9 @@ bank, not yet against a production bank.
   compression, A006 signature (RSASSA-PSS, SHA-256) on uploads.
 - BTD downloads with several segments, receipts, and unpacking of ZIP containers.
 - BTU uploads with segmentation and an optional file name, behind `allow_uploads=True`.
+  CR, LF and Ctrl-Z are removed from the order data once, before signing, and that normalized
+  document is what is signed (A006), digested (DataDigest) and sent, as railslove/epics does:
+  the file the bank receives has no line breaks.
 - `Service` BTF presets for Switzerland and Germany: camt.052, camt.053, camt.054, pain.001,
   pain.008.
 - INI and HIA letters with the SHA-256 certificate hashes, and `letter.bank_key_hashes` to

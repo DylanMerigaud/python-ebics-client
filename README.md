@@ -167,7 +167,9 @@ print("order id", order_id, "signature checked by the bank:", fake.uploads[-1].s
 
 Without `allow_uploads=True`, `upload` raises `UploadsDisabled`: an upload can move money. The
 file is signed with the A006 key of the user, encrypted and sent; the library does not read or
-validate the payment content.
+validate the payment content. CR, LF and Ctrl-Z are removed from the order data before signing,
+as EBICS banks do when they hash it, and that same normalized document is what is sent: the
+file the bank receives has no line breaks (a pretty-printed pain.001 arrives on one line).
 
 ### Save and load the keyring
 

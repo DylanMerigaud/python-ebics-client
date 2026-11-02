@@ -195,12 +195,22 @@ def _bank_digests(static: etree._Element, keyring: Keyring) -> None:
 
 
 def _order_xml(root: etree._Element) -> bytes:
-    return etree.tostring(root, xml_declaration=True, encoding="UTF-8")
+    """Serialize an order data document without any line break.
+
+    lxml puts a newline after the XML declaration; EBICS hashes order data with CR,
+    LF and Ctrl-Z removed, so the document is built already in that form and the
+    bytes signed are the bytes sent.
+    """
+    return crypto.normalize_order_data(etree.tostring(root, xml_declaration=True, encoding="UTF-8"))
 
 
 def _user_signature_data(ctx: RequestContext, keyring: Keyring, order_data: bytes) -> bytes:
-    """UserSignatureData (S002) with the A006 signature of order_data."""
-    signature = crypto.a006_sign(keyring.signature_key, crypto.normalize_order_data(order_data))
+    """UserSignatureData (S002) with the A006 signature of order_data, signed as given.
+
+    Callers pass order data that is already normalized (no CR, LF or Ctrl-Z) and
+    transmit exactly those bytes.
+    """
+    signature = crypto.a006_sign(keyring.signature_key, order_data)
     root = _new(f"{{{S002_NS}}}UserSignatureData", S002_NS)
     data = _sub(root, f"{{{S002_NS}}}OrderSignatureData")
     _sub(data, f"{{{S002_NS}}}SignatureVersion", crypto.SIGNATURE)
@@ -425,15 +435,17 @@ def build_receipt(
 def prepare_upload(ctx: RequestContext, keyring: Keyring, order_data: bytes) -> UploadPayload:
     """Sign, compress, encrypt and segment order data for a BTU.
 
-    The A006 signature and the DataDigest cover the order data with CR, LF and
-    Ctrl-Z removed (the EBICS hash rule); the data itself is sent unchanged, so
-    non-XML formats keep their line breaks.
+    The order data is normalized once (CR, LF and Ctrl-Z removed, the EBICS hash
+    rule, as railslove/epics does) and those exact bytes are signed with A006,
+    digested into DataDigest, then compressed, encrypted and sent. The bank thus
+    receives the document without line breaks.
     """
+    normalized = crypto.normalize_order_data(order_data)
     transaction_key = crypto.generate_transaction_key()
-    digest = hashlib.sha256(crypto.normalize_order_data(order_data)).digest()
-    signature = _user_signature_data(ctx, keyring, order_data)
+    digest = hashlib.sha256(normalized).digest()
+    signature = _user_signature_data(ctx, keyring, normalized)
     signature_data = crypto.aes_encrypt(transaction_key, crypto.compress(signature))
-    encrypted = crypto.aes_encrypt(transaction_key, crypto.compress(order_data))
+    encrypted = crypto.aes_encrypt(transaction_key, crypto.compress(normalized))
     segments = [
         _b64(encrypted[i : i + _RAW_SEGMENT]) for i in range(0, len(encrypted), _RAW_SEGMENT)
     ]

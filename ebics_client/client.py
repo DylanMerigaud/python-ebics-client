@@ -249,7 +249,10 @@ class EbicsClient:
         """Upload data for service (BTU) with our A006 signature; returns the order id.
 
         Refused with UploadsDisabled unless the client was created with
-        allow_uploads=True: an upload can move money.
+        allow_uploads=True: an upload can move money. CR, LF and Ctrl-Z are removed
+        from data before signing (EBICS banks hash order data that way) and the
+        normalized bytes are what is sent, so the file the bank receives has no
+        line breaks.
         """
         if not self.allow_uploads:
             raise UploadsDisabled(

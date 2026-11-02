@@ -148,15 +148,11 @@ def _aes(key: bytes, data: bytes, encrypt: bool) -> bytes:
     return plain[: -plain[-1]]
 
 
-def _hash_input(order_data: bytes) -> bytes:
-    for char in (b"\r", b"\n", b"\x1a"):
-        order_data = order_data.replace(char, b"")
-    return order_data
-
-
 def _a006_ok(certificate: x509.Certificate, signature: bytes, order_data: bytes) -> bool:
+    # The hash covers exactly the bytes received: the client removes CR, LF and
+    # Ctrl-Z before signing and sends that normalized document, so no filter here.
     key = cast(rsa.RSAPublicKey, certificate.public_key())
-    hashed = hashlib.sha256(_hash_input(order_data)).digest()
+    hashed = hashlib.sha256(order_data).digest()
     try:
         key.verify(
             signature,
@@ -728,7 +724,7 @@ class FakeBank:
     def _accept_upload(self, transaction: _Transaction) -> None:
         encrypted = b"".join(base64.b64decode(s) for s in transaction.segments)
         data = zlib.decompress(_aes(transaction.transaction_key, encrypted, encrypt=False))
-        if hashlib.sha256(_hash_input(data)).digest() != transaction.data_digest:
+        if hashlib.sha256(data).digest() != transaction.data_digest:
             raise _Refusal(business="091301", text="DataDigest does not match the order data")
         signature_xml = _parse(
             zlib.decompress(
